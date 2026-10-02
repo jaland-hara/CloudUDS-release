@@ -4,7 +4,7 @@
 
 | Компонент | Лицензия | Где | Изменения |
 |---|---|---|---|
-| OpenUDS (broker) | BSD-3-Clause | образ `broker` | патчи (тунели с привязкой к адресу, провайдер vSphere, транспорт HTML5 и др.) |
+| OpenUDS (broker) | BSD-3-Clause | образ `broker` | патчи (туннели с привязкой к адресу, провайдер vSphere, транспорт HTML5 и др.) |
 | UDS Tunnel (Rust) | BSD-3-Clause | образ `tunnel` | клиентский сертификат (mTLS) |
 | Apache Guacamole (client, server) | Apache-2.0 | образы `guacamole`, `guacd` | обновлённые библиотеки, убраны неиспользуемые модули |
 | FreeRDP | Apache-2.0 | образ `guacd` | — |
