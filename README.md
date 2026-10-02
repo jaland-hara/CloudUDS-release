@@ -9,10 +9,12 @@
 1. Создайте ВМ установщика в проекте VK Cloud: Ubuntu 24.04, 2 vCPU / 4 ГБ / 40 ГБ, в сети, из которой будут видны узлы.
 2. На ней:
    ```
-   curl -fLO https://github.com/jaland-hara/CloudUDS-release/releases/download/vX.Y.Z/install.sh
-   sudo bash install.sh https://github.com/jaland-hara/CloudUDS-release/releases/download/vX.Y.Z/cloududs-X.Y.Z.tar
+   curl -fsSLO https://raw.githubusercontent.com/jaland-hara/CloudUDS-release/main/install.sh
+   sudo bash install.sh              # последний выпуск
+   sudo bash install.sh 0.1.0-dev.3  # или конкретная версия
    ```
-   Без доступа к GitHub с этой ВМ: скачайте пакет где угодно, перенесите на ВМ и выполните `sudo bash install.sh /путь/cloududs-X.Y.Z.tar`.
+   Без доступа к GitHub с этой ВМ: скачайте пакет `cloududs-X.Y.Z.tar` со страницы [выпусков](../../releases) где угодно,
+   перенесите на ВМ вместе с `install.sh` и выполните `sudo bash install.sh /путь/cloududs-X.Y.Z.tar`.
 3. Скрипт напечатает команду SSH-туннеля и ссылку входа в мастер. Дальше мастер ведёт по шагам: профиль, подготовка облака, узлы и предпроверка, параметры, установка.
 
 Команды на ВМ установщика: `sudo cloududs-installer link | status | logs | restart`, обновление — `sudo cloududs-installer <пакет новой версии>`.

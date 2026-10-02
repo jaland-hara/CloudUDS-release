@@ -1,8 +1,9 @@
 #!/bin/bash
 # cloududs: installer VM bootstrap and control. Ubuntu 24.04, run as root.
 #
-#   install.sh <bundle>          install or upgrade the installer from a release bundle:
-#                                 https://…/cloududs-X.Y.Z.tar (downloaded) or /path/cloududs-X.Y.Z.tar (carried in)
+#   install.sh [X.Y.Z | URL | file]   install or upgrade the installer from a release bundle:
+#                                 nothing — the latest release of github.com/jaland-hara/CloudUDS-release,
+#                                 X.Y.Z — that release, https://…/cloududs-X.Y.Z.tar, or /path/cloududs-X.Y.Z.tar (carried in)
 #   cloududs-installer link      a new one-time sign-in link (the old one stops working)
 #   cloududs-installer status | logs | restart
 #
@@ -14,6 +15,7 @@ set -euo pipefail
 PUB='-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAGwZLg7ikstwyZrsqSG8SfAx7sJtGeeSx/kaJMvMHPYw=
 -----END PUBLIC KEY-----'
+RELEASES=https://github.com/jaland-hara/CloudUDS-release; RELAPI=https://api.github.com/repos/jaland-hara/CloudUDS-release
 ROOT=/opt/cloududs; DATA=/var/lib/cloududs-installer; CNAME=cloududs-installer; PORT=8200; UID_I=995
 say(){ echo "[cloududs] $*"; }
 die(){ echo "[cloududs] ОШИБКА: $*" >&2; exit 1; }
@@ -54,8 +56,14 @@ install_bundle() {
     systemctl enable --now docker >/dev/null 2>&1
   fi
   install -d -m 755 $ROOT $ROOT/releases $ROOT/incoming
+  if [ -z "$src" ]; then   # the newest release (pre-releases included while only -dev versions exist)
+    src=$(curl -fsS "$RELAPI/releases?per_page=1" | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r[0]["tag_name"][1:] if r else "")') \
+      || die "не удалось узнать последний выпуск ($RELEASES)"
+    [ -n "$src" ] || die "выпусков пока нет"
+  fi
+  if [[ $src =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.-]+)?$ ]]; then src=${src#v}; src="$RELEASES/releases/download/v$src/cloududs-$src.tar"; fi
   case $src in
-    http://*|https://*) f=$ROOT/incoming/$(basename "${src%%\?*}"); say "загрузка $src"; curl -fL --retry 3 -o "$f.part" "$src"; mv "$f.part" "$f" ;;
+    http://*|https://*) f=$ROOT/incoming/$(basename "${src%%\?*}"); say "загрузка $src"; curl -fL --retry 3 -o "$f.part" "$src" || die "не удалось скачать"; mv "$f.part" "$f"; DOWNLOADED=$f ;;
     *) f=$(readlink -f "$src"); [ -f "$f" ] || die "нет файла $src" ;;
   esac
   work=$(mktemp -d $ROOT/incoming/unpack.XXXX); trap 'rm -rf "$work"' EXIT
@@ -96,6 +104,7 @@ PY
   install -m 755 "$ROOT/current/code/installer/install.sh" /usr/local/sbin/cloududs-installer
   run_container "$ver"
   say "мастер $ver запущен"
+  [ -n "${DOWNLOADED:-}" ] && rm -f "$DOWNLOADED"   # unpacked into releases/ — the archive is not needed any more
   if [ -n "$first" ]; then link; else say "ссылка входа прежняя; новая: sudo cloududs-installer link"; fi
   # keep the last three releases (never the active one)
   ls -1d $ROOT/releases/* | sort -V | head -n -3 | grep -vx "$ROOT/releases/$ver" | xargs -r rm -rf
@@ -106,6 +115,6 @@ case "${1:-}" in
   status) docker ps -a --filter name=$CNAME --format '{{.Names}} {{.Image}} {{.Status}}'; readlink $ROOT/current ;;
   logs) docker logs --tail 100 -f $CNAME ;;
   restart) docker restart $CNAME >/dev/null && say "перезапущен" ;;
-  ""|-h|--help) sed -n 2,12p "$0" ;;
-  *) install_bundle "$1" ;;
+  -h|--help) sed -n 2,13p "$0" ;;
+  *) install_bundle "${1:-}" ;;
 esac
