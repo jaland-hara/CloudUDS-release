@@ -57,7 +57,14 @@ install_bundle() {
   fi
   install -d -m 755 $ROOT $ROOT/releases $ROOT/incoming
   if [ -z "$src" ]; then   # the newest release (pre-releases included while only -dev versions exist)
-    src=$(curl -fsS "$RELAPI/releases?per_page=1" | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r[0]["tag_name"][1:] if r else "")') \
+    # the highest version (GitHub lists releases by the tag commit date, not by version): final > rc > dev
+    src=$(curl -fsS "$RELAPI/releases?per_page=100" | python3 -c '
+import json, re, sys
+def key(t):
+    m = re.match(r"v?(\d+)\.(\d+)\.(\d+)(?:-(dev|rc)\.?(\d+))?$", t)
+    return (int(m[1]), int(m[2]), int(m[3]), {"dev": 0, "rc": 1, None: 2}[m[4]], int(m[5] or 0)) if m else (-1,)
+tags = [r["tag_name"] for r in json.load(sys.stdin) if not r.get("draft")]
+print(max(tags, key=key)[1:] if tags else "")') \
       || die "не удалось узнать последний выпуск ($RELEASES)"
     [ -n "$src" ] || die "выпусков пока нет"
   fi
