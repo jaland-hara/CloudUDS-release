@@ -63,7 +63,7 @@ install_bundle() {
   fi
   if [[ $src =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.-]+)?$ ]]; then src=${src#v}; src="$RELEASES/releases/download/v$src/cloududs-$src.tar"; fi
   case $src in
-    http://*|https://*) f=$ROOT/incoming/$(basename "${src%%\?*}"); say "загрузка $src"; curl -fL --retry 3 -o "$f.part" "$src" || die "не удалось скачать"; mv "$f.part" "$f"; DOWNLOADED=$f ;;
+    http://*|https://*) f=$ROOT/incoming/$(basename "${src%%\?*}"); say "загрузка $src"; curl -fL --retry 3 --progress-bar -o "$f.part" "$src" || die "не удалось скачать"; mv "$f.part" "$f"; DOWNLOADED=$f ;;
     *) f=$(readlink -f "$src"); [ -f "$f" ] || die "нет файла $src" ;;
   esac
   work=$(mktemp -d $ROOT/incoming/unpack.XXXX); trap 'rm -rf "$work"' EXIT
