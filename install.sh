@@ -101,6 +101,8 @@ PY
   say "образ мастера"; zstd -dc "$ROOT/current/images/installer.tar.zst" | docker load -q >/dev/null
   install -d -m 700 -o $UID_I $DATA
   local first=; [ -f $DATA/access_token ] || { first=1; token; }
+  # the VM's own address: the wizard finds its network and router in the cloud by it (the container sees only its bridge)
+  ip -4 -o route get 1.1.1.1 2>/dev/null | sed -nE 's/.* src ([0-9.]+).*/\1/p' > $DATA/host_ip; chown $UID_I $DATA/host_ip
   install -m 755 "$ROOT/current/code/installer/install.sh" /usr/local/sbin/cloududs-installer
   run_container "$ver"
   say "мастер $ver запущен"
