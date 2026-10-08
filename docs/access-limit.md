@@ -24,7 +24,7 @@
 ## Белые списки адресов
 
 1.  Откройте «Безопасность» → «Белые списки адресов».
-2.  Впишите адреса и сети по одной в строке, например 203.0.113.7 или 198.51.100.0/24. После \# можно оставить комментарий.
+2.  Впишите адреса и сети по одной в строке, например `203.0.113.7` или `198.51.100.0/24`. После `#` можно оставить комментарий.
 3.  Для кабинета нажмите «Добавить мой адрес»: без него кабинет не даст сохранить список, иначе вы потеряете доступ.
 4.  Включите переключатель и нажмите «Сохранить». Фронты применят за минуту.
 
@@ -34,7 +34,7 @@
 
 > **Что не ограничивается.**
 >
-> Агенты на столах, подключение узлов и команды подготовки образов (/admin/agent/, /admin/join/, /admin/prep/): у них свои ключи, а адреса — это сети столов.
+> Агенты на столах, подключение узлов и команды подготовки образов (`/admin/agent/`, `/admin/join/`, `/admin/prep/`): у них свои ключи, а адреса — это сети столов.
 
 Сотрудник с адреса не из списка увидит «Портал недоступен с вашего адреса». В журнале фиксируется, кто и когда менял списки, уведомление уходит в канал «Безопасность».
 
@@ -42,29 +42,37 @@
 
 Подключитесь по SSH к любому узлу кабинета (узел брокера) и выполните от root. База общая, поэтому достаточно одного узла:
 
-sudo docker exec panel-panel-1 python3 /opt/vdi-panel/backend/admincli.py access
+``` bash
+sudo docker exec panel-panel-1 python3 /opt/vdi-panel/backend/admincli.py access
+```
 
 Команда покажет, что включено и что применил каждый фронт. Снять ограничение:
 
-sudo docker exec panel-panel-1 python3 /opt/vdi-panel/backend/admincli.py allow-off admin\
-sudo docker exec panel-panel-1 python3 /opt/vdi-panel/backend/admincli.py allow-off portal\
-sudo docker exec panel-panel-1 python3 /opt/vdi-panel/backend/admincli.py admin-open
+``` bash
+sudo docker exec panel-panel-1 python3 /opt/vdi-panel/backend/admincli.py allow-off admin
+sudo docker exec panel-panel-1 python3 /opt/vdi-panel/backend/admincli.py allow-off portal
+sudo docker exec panel-panel-1 python3 /opt/vdi-panel/backend/admincli.py admin-open
+```
 
-allow-off выключает список, но сохраняет адреса: потом его можно поправить и включить снова. Вместо admin и portal можно указать all. admin-open снова открывает кабинет из интернета. Фронты применят изменения в течение минуты.
+`allow-off` выключает список, но сохраняет адреса: потом его можно поправить и включить снова. Вместо `admin` и `portal` можно указать `all`. `admin-open` снова открывает кабинет из интернета. Фронты применят изменения в течение минуты.
 
 ## Если кабинет не работает: на каждом фронте
 
 Когда кабинет недоступен (не стартует контейнер, нет базы), снимите ограничение прямо на фронтах. Сначала остановите синхронизацию, иначе она вернёт настройки из кабинета:
 
-sudo systemctl stop vdi-certsync.timer\
-sudo truncate -s 0 /etc/haproxy/access.map\
-sudo systemctl reload haproxy
+``` bash
+sudo systemctl stop vdi-certsync.timer
+sudo truncate -s 0 /etc/haproxy/access.map
+sudo systemctl reload haproxy
+```
 
-Повторите на каждом фронте. В /etc/haproxy/access.map лежат строки admin closed, admin_allow on и portal_allow on. Пустой файл снимает все три ограничения. Сами списки лежат в /etc/haproxy/allow-admin.lst и allow-portal.lst.
+Повторите на каждом фронте. В `/etc/haproxy/access.map` лежат строки `admin closed`, `admin_allow on` и `portal_allow on`. Пустой файл снимает все три ограничения. Сами списки лежат в `/etc/haproxy/allow-admin.lst` и `allow-portal.lst`.
 
-Когда кабинет заработает, поправьте настройки в нём или командой admincli и включите синхронизацию обратно:
+Когда кабинет заработает, поправьте настройки в нём или командой `admincli` и включите синхронизацию обратно:
 
-sudo systemctl start vdi-certsync.timer
+``` bash
+sudo systemctl start vdi-certsync.timer
+```
 
 > **⚠ Не оставляйте синхронизацию выключенной.**
 >
