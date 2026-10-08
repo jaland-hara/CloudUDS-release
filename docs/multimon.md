@@ -22,7 +22,19 @@
 
 **Ограничения:** раскладка задаётся при подключении — подключили или сняли монитор во время работы: переподключитесь. Вход «В браузере» всегда показывает стол в одном окне браузера.
 
-**Как проверить:** подключитесь к столу и выполните в нём `powershell "Add-Type -A System.Windows.Forms; [Windows.Forms.Screen]::AllScreens | ft DeviceName,Bounds,Primary"` (Windows) или `xrandr --listmonitors` (Linux): мониторов должно быть столько же, сколько у сотрудника.
+**Как проверить:** подключитесь к столу и выполните в нём команду — мониторов должно быть столько же, сколько у сотрудника.
+
+Windows (PowerShell):
+
+``` powershell
+Add-Type -A System.Windows.Forms; [Windows.Forms.Screen]::AllScreens | ft DeviceName,Bounds,Primary
+```
+
+Linux:
+
+``` bash
+xrandr --listmonitors
+```
 
 ---
 [Оглавление](README.md)
