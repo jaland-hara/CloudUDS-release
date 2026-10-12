@@ -27,5 +27,13 @@
 
 Подробно для администратора домена — docs/ops/cert-logon.md в поставке.
 
+[![Вход без пароля](img/ui-certlogon.png)](img/ui-certlogon.png)
+
+Вход без пароля
+
+[![Единый вход (ADFS)](img/ui-sso.png)](img/ui-sso.png)
+
+Единый вход (ADFS)
+
 ---
 [Оглавление](README.md)
