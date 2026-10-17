@@ -17,9 +17,17 @@
 2. На ней:
    ```
    curl -fsSLO https://raw.githubusercontent.com/jaland-hara/CloudUDS-release/main/install.sh
-   sudo bash install.sh              # последний выпуск
-   sudo bash install.sh 0.1.0-dev.3  # или конкретная версия
+   sudo bash install.sh              # последний выпуск; скрипт спросит, откуда качать: GitHub или VK Cloud S3
+   sudo bash install.sh 0.1.0-rc.34  # или конкретная версия
    ```
+   То же из VK Cloud S3 (Москва) — если GitHub недоступен или медленный:
+   ```
+   curl -fsSLO https://hb.ru-msk.vkcloud-storage.ru/sources/cloududs/install.sh
+   sudo bash install.sh --from s3
+   ```
+   Пакет качается в 8 потоков; если выбранный источник недоступен, скрипт пробует другой. Подлинность проверяется
+   одной подписью, откуда бы пакет ни пришёл. Постоянные ссылки на пакеты в S3:
+   `https://hb.ru-msk.vkcloud-storage.ru/sources/cloududs/releases/<версия>/cloududs-<версия>.tar`.
    Без доступа к GitHub с этой ВМ: скачайте пакет `cloududs-X.Y.Z.tar` со страницы [выпусков](../../releases) где угодно,
    перенесите на ВМ вместе с `install.sh` и выполните `sudo bash install.sh /путь/cloududs-X.Y.Z.tar`.
 3. Скрипт напечатает команду SSH-туннеля и ссылку входа в мастер. Дальше мастер ведёт по шагам: профиль инсталляции, подготовка облака, узлы и предпроверка, параметры, установка.

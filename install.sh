@@ -1,9 +1,14 @@
 #!/bin/bash
 # cloududs: installer VM bootstrap and control. Ubuntu 24.04, run as root.
 #
-#   install.sh [X.Y.Z | URL | file]   install or upgrade the installer from a release bundle:
-#                                 nothing — the latest release of github.com/jaland-hara/CloudUDS-release,
-#                                 X.Y.Z — that release, https://…/cloududs-X.Y.Z.tar, or /path/cloududs-X.Y.Z.tar (carried in)
+#   install.sh [--from github|s3] [X.Y.Z | URL | file]   install or upgrade the installer from a release bundle:
+#                                 nothing — the latest release, X.Y.Z — that release, https://…/cloududs-X.Y.Z.tar,
+#                                 or /path/cloududs-X.Y.Z.tar (carried in)
+#                                 --from: where releases are downloaded — github (github.com/jaland-hara/CloudUDS-release)
+#                                 or s3 (VK Cloud object storage, Moscow); without it the script asks (a terminal) or
+#                                 takes GitHub; the other source is tried when the chosen one fails. The bundle comes
+#                                 in 8 parallel streams (aria2c when installed, else curl ranges): a single stream is
+#                                 capped at ~2 MB/s on some routes. Either source is checked by the same signature.
 #   cloududs-installer link      a new one-time sign-in link (the old one stops working)
 #   cloududs-installer status | logs | restart
 #
@@ -16,7 +21,8 @@ PUB='-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAGwZLg7ikstwyZrsqSG8SfAx7sJtGeeSx/kaJMvMHPYw=
 -----END PUBLIC KEY-----'
 RELEASES=https://github.com/jaland-hara/CloudUDS-release; RELAPI=https://api.github.com/repos/jaland-hara/CloudUDS-release
-ROOT=/opt/cloududs; DATA=/var/lib/cloududs-installer; CNAME=cloududs-installer; PORT=8200; UID_I=995
+S3REL=https://hb.ru-msk.vkcloud-storage.ru/sources/cloududs   # releases/<X.Y.Z>/cloududs-<X.Y.Z>.tar, latest
+FROM=${CLOUDUDS_FROM:-}; ROOT=/opt/cloududs; DATA=/var/lib/cloududs-installer; CNAME=cloududs-installer; PORT=8200; UID_I=995
 say(){ echo "[cloududs] $*"; }
 die(){ echo "[cloududs] ОШИБКА: $*" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || die "запустите от root (sudo)"
@@ -46,6 +52,40 @@ run_container() {
   docker logs --tail 30 $CNAME; die "мастер не отвечает"
 }
 
+# the bundle in parallel streams: aria2c, or curl byte ranges glued together; one stream when the server gives no size
+fetch() {
+  local url=$1 out=$2 n=8 len i a b pids=()
+  if command -v aria2c >/dev/null; then
+    aria2c -q --console-log-level=warn -x$n -s$n -k20M --max-tries=5 --retry-wait=3 --allow-overwrite=true \
+      -d "$(dirname "$out")" -o "$(basename "$out")" "$url" && return 0
+  fi
+  len=$(curl -fsIL "$url" | tr -d '\r' | awk 'tolower($1)=="content-length:"{l=$2} END{print l+0}')
+  if [ "${len:-0}" -lt 67108864 ]; then curl -fL --retry 3 --progress-bar -o "$out" "$url"; return; fi
+  for i in $(seq 0 $((n - 1))); do
+    a=$((len * i / n)); b=$((len * (i + 1) / n - 1))
+    curl -fsL --retry 5 --retry-all-errors -r $a-$b -o "$out.$i" "$url" & pids+=($!)
+  done
+  ( while sleep 5; do du -cb "$out".[0-9] 2>/dev/null | tail -1 | awk -v t=$len '{printf "\r[cloududs]   %d из %d МБ", $1/1048576, t/1048576}'; done ) & local mon=$!
+  for i in "${pids[@]}"; do wait $i || { kill $mon 2>/dev/null; rm -f "$out".[0-9]; return 1; }; done
+  kill $mon 2>/dev/null; echo
+  cat $(for i in $(seq 0 $((n - 1))); do echo "$out.$i"; done) > "$out"; rm -f "$out".[0-9]
+  [ "$(stat -c %s "$out")" = "$len" ] || { rm -f "$out"; return 1; }
+}
+
+latest() {   # the highest version at the source: final > rc > dev
+  case $1 in
+    s3) curl -fsS "$S3REL/latest" | tr -d ' \r\n' ;;
+    *) curl -fsS "$RELAPI/releases?per_page=100" | python3 -c '
+import json, re, sys
+def key(t):
+    m = re.match(r"v?(\d+)\.(\d+)\.(\d+)(?:-(dev|rc)\.?(\d+))?$", t)
+    return (int(m[1]), int(m[2]), int(m[3]), {"dev": 0, "rc": 1, None: 2}[m[4]], int(m[5] or 0)) if m else (-1,)
+tags = [r["tag_name"] for r in json.load(sys.stdin) if not r.get("draft")]
+print(max(tags, key=key)[1:] if tags else "")' ;;
+  esac
+}
+bundle_url() { [ "$1" = s3 ] && echo "$S3REL/releases/$2/cloududs-$2.tar" || echo "$RELEASES/releases/download/v$2/cloududs-$2.tar"; }
+
 install_bundle() {
   local src=$1 work f ver
   . /etc/os-release; [ "$ID $VERSION_ID" = "ubuntu 24.04" ] || say "внимание: проверено на Ubuntu 24.04, здесь $ID $VERSION_ID"
@@ -56,23 +96,31 @@ install_bundle() {
     systemctl enable --now docker >/dev/null 2>&1
   fi
   install -d -m 755 $ROOT $ROOT/releases $ROOT/incoming
-  if [ -z "$src" ]; then   # the newest release (pre-releases included while only -dev versions exist)
-    # the highest version (GitHub lists releases by the tag commit date, not by version): final > rc > dev
-    src=$(curl -fsS "$RELAPI/releases?per_page=100" | python3 -c '
-import json, re, sys
-def key(t):
-    m = re.match(r"v?(\d+)\.(\d+)\.(\d+)(?:-(dev|rc)\.?(\d+))?$", t)
-    return (int(m[1]), int(m[2]), int(m[3]), {"dev": 0, "rc": 1, None: 2}[m[4]], int(m[5] or 0)) if m else (-1,)
-tags = [r["tag_name"] for r in json.load(sys.stdin) if not r.get("draft")]
-print(max(tags, key=key)[1:] if tags else "")') \
-      || die "не удалось узнать последний выпуск ($RELEASES)"
-    [ -n "$src" ] || die "выпусков пока нет"
+  if [ -z "$src" ] || [[ $src =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.-]+)?$ ]]; then
+    if [ -z "$FROM" ]; then
+      if [ -t 0 ]; then
+        echo "Откуда скачать выпуск:"; echo "  1) GitHub (github.com/jaland-hara/CloudUDS-release)"; echo "  2) VK Cloud S3, Москва (hb.ru-msk.vkcloud-storage.ru)"
+        read -r -t 60 -p "Выбор [1]: " a || true; [ "${a:-1}" = 2 ] && FROM=s3 || FROM=github
+      else FROM=github; fi
+    fi
+    local other; [ "$FROM" = s3 ] && other=github || other=s3
+    local ver_want=${src#v} s
+    f=; for s in $FROM $other; do
+      [ $s = $other ] && say "$FROM недоступен — пробую $other"
+      local v=$ver_want; [ -n "$v" ] || v=$(latest $s 2>/dev/null) || v=
+      [ -n "$v" ] || { say "$s: не удалось узнать последний выпуск"; continue; }
+      local url; url=$(bundle_url $s "$v"); f=$ROOT/incoming/cloududs-$v.tar
+      say "загрузка $url (8 потоков)"
+      if fetch "$url" "$f.part"; then mv "$f.part" "$f"; DOWNLOADED=$f; break; fi
+      rm -f "$f.part"; f=; say "$s: не удалось скачать"
+    done
+    [ -n "$f" ] || die "выпуск не скачан ни с GitHub, ни из S3; можно принести файл: sudo bash install.sh /путь/cloududs-X.Y.Z.tar"
+  else
+    case $src in
+      http://*|https://*) f=$ROOT/incoming/$(basename "${src%%\?*}"); say "загрузка $src (8 потоков)"; fetch "$src" "$f.part" || die "не удалось скачать"; mv "$f.part" "$f"; DOWNLOADED=$f ;;
+      *) f=$(readlink -f "$src"); [ -f "$f" ] || die "нет файла $src" ;;
+    esac
   fi
-  if [[ $src =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.-]+)?$ ]]; then src=${src#v}; src="$RELEASES/releases/download/v$src/cloududs-$src.tar"; fi
-  case $src in
-    http://*|https://*) f=$ROOT/incoming/$(basename "${src%%\?*}"); say "загрузка $src"; curl -fL --retry 3 --progress-bar -o "$f.part" "$src" || die "не удалось скачать"; mv "$f.part" "$f"; DOWNLOADED=$f ;;
-    *) f=$(readlink -f "$src"); [ -f "$f" ] || die "нет файла $src" ;;
-  esac
   work=$(mktemp -d $ROOT/incoming/unpack.XXXX); trap 'rm -rf "$work"' EXIT
   tar -xf "$f" -C "$work" manifest.json manifest.sig || die "это не пакет выпуска (нет manifest.json)"
   printf '%s\n' "$PUB" > "$work/pub.pem"
@@ -125,5 +173,6 @@ case "${1:-}" in
   logs) docker logs --tail 100 -f $CNAME ;;
   restart) docker restart $CNAME >/dev/null && say "перезапущен" ;;
   -h|--help) sed -n 2,13p "$0" ;;
+  --from) FROM=${2:-}; [[ $FROM =~ ^(github|s3)$ ]] || die "--from github или s3"; install_bundle "${3:-}" ;;
   *) install_bundle "${1:-}" ;;
 esac
